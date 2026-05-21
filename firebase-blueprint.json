@@ -1,0 +1,33 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "Un proyecto de auditoría de seguridad perimetral",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "scope": { "type": "string" },
+        "auditor": { "type": "string" },
+        "date": { "type": "string" },
+        "desc": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "active", "done", "archived"]
+        },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "entries": { "type": "object" },
+        "phaseStatus": { "type": "object" }
+      },
+      "required": ["id", "userId", "name", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "projects/{projectId}": {
+      "schema": "Project",
+      "description": "Colección de proyectos de auditoría creados por cada auditor"
+    }
+  }
+}

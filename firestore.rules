@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reuseable, hardened primitive helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com');
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity validator logic (The Anti-Update-Gap schema guard)
+    function isValidProject(data) {
+      return data.keys().hasAll(['id', 'userId', 'name', 'scope', 'auditor', 'date', 'desc', 'status', 'createdAt', 'updatedAt', 'entries', 'phaseStatus']) &&
+             data.keys().size() == 12 &&
+             data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 256 &&
+             data.scope is string && data.scope.size() <= 512 &&
+             data.auditor is string && data.auditor.size() <= 256 &&
+             data.date is string && data.date.size() <= 64 &&
+             data.desc is string && data.desc.size() <= 2048 &&
+             data.status is string && (data.status == 'pending' || data.status == 'active' || data.status == 'done' || data.status == 'archived') &&
+             data.createdAt is int &&
+             data.updatedAt is int &&
+             data.entries is map &&
+             data.phaseStatus is map;
+    }
+
+    // Action checks for updates
+    function isEditMetaAction() {
+      return incoming().diff(existing()).affectedKeys().hasOnly(['name', 'scope', 'auditor', 'date', 'status', 'desc', 'updatedAt']);
+    }
+
+    function isUpdateEntriesAction() {
+      return incoming().diff(existing()).affectedKeys().hasOnly(['entries', 'updatedAt']);
+    }
+
+    function isUpdatePhaseStatusAction() {
+      return incoming().diff(existing()).affectedKeys().hasOnly(['phaseStatus', 'updatedAt']);
+    }
+
+    // Match rule block for Project documents
+    match /projects/{projectId} {
+      // Get can only read their own projects, avoiding PII leakage
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+
+      // Safe List query enforcement
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // Create rule: must be signed-in, email-verified, valid ID, and fully matching schema
+      allow create: if isSignedIn() &&
+                    isEmailVerified() &&
+                    isValidId(projectId) &&
+                    isValidProject(incoming()) &&
+                    incoming().createdAt <= request.time.toMillis() + 300000;
+
+      // Update rule: must be owner, email-verified, valid schemas, and immutable fields intact
+      allow update: if isSignedIn() &&
+                    isEmailVerified() &&
+                    isValidProject(incoming()) &&
+                    incoming().id == existing().id &&
+                    incoming().userId == existing().userId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().updatedAt >= existing().updatedAt &&
+                    incoming().updatedAt <= request.time.toMillis() + 300000 && (
+                      isEditMetaAction() ||
+                      isUpdateEntriesAction() ||
+                      isUpdatePhaseStatusAction()
+                    );
+
+      // Delete rule: can only be deleted if owner
+      allow delete: if isSignedIn() &&
+                    isEmailVerified() &&
+                    existing().userId == request.auth.uid;
+    }
+  }
+}

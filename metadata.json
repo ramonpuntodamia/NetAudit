@@ -1,0 +1,6 @@
+{
+  "name": "Bitácora de Auditoría de Red",
+  "description": "Una bitácora para auditorías de seguridad informática y redes organizada por fases con reportes y exportación.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
